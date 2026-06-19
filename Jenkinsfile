@@ -34,20 +34,27 @@ pipeline {
                 sh '''
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
 
+                    docker rm -f test-runner 2>/dev/null || true
+
                     set +e
-                    docker run --rm \
+                    docker run \
                     -e CI=true \
-                    -v "$WORKSPACE":/app \
-                    -w /app \
-                    --entrypoint pytest \
+                    --name test-runner \
                     ${IMAGE_NAME}:${IMAGE_TAG} \
-                    tests/ -v \
+                    pytest tests/ -v \
                     --cov=src \
-                    --cov-report=xml:coverage.xml \
+                    --cov-report=xml:/tmp/coverage.xml \
                     --cov-report=term-missing \
                     --cov-fail-under=70
                     TEST_EXIT_CODE=$?
                     set -e
+
+                    docker cp test-runner:/tmp/coverage.xml ./coverage.xml 2>/dev/null || true
+                    docker rm -f test-runner 2>/dev/null || true
+
+                    # Corriger les chemins absolus /app/ -> chemins relatifs pour SonarQube
+                    sed -i 's#/app/#./#g' coverage.xml 2>/dev/null || true
+                    sed -i 's#filename="src/#filename="src/#g' coverage.xml 2>/dev/null || true
 
                     exit $TEST_EXIT_CODE
                 '''
@@ -58,7 +65,6 @@ pipeline {
                 }
             }
         }
-
         stage('SonarQube Analysis') {
             environment {
                 SONARQUBE_TOKEN = credentials('sonar-token')
