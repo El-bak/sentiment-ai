@@ -34,23 +34,20 @@ pipeline {
                 sh '''
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
 
-                    docker rm -f test-runner 2>/dev/null || true
-
                     set +e
-                    docker run \
+                    docker run --rm \
                     -e CI=true \
-                    --name test-runner \
+                    -v "$WORKSPACE":/app \
+                    -w /app \
+                    --entrypoint pytest \
                     ${IMAGE_NAME}:${IMAGE_TAG} \
-                    pytest tests/ -v \
+                    tests/ -v \
                     --cov=src \
-                    --cov-report=xml:/tmp/coverage.xml \
+                    --cov-report=xml:coverage.xml \
                     --cov-report=term-missing \
                     --cov-fail-under=70
                     TEST_EXIT_CODE=$?
                     set -e
-
-                    docker cp test-runner:/tmp/coverage.xml ./coverage.xml 2>/dev/null || true
-                    docker rm -f test-runner 2>/dev/null || true
 
                     exit $TEST_EXIT_CODE
                 '''
