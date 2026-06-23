@@ -146,7 +146,7 @@ pipeline {
             }
         }
 
-        stage('Deploy Staging') {
+       stage('Deploy Staging') {
             when {
                 expression {
                     return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
@@ -155,8 +155,12 @@ pipeline {
             steps {
                 echo "Déploiement de ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} en staging..."
                 sh '''
-                    docker compose -f docker-compose.yml -p staging down 2>/dev/null || true
-                    docker compose -f docker-compose.yml -p staging up -d
+                    docker stop staging-sentiment 2>/dev/null || true
+                    docker rm staging-sentiment 2>/dev/null || true
+                    docker run -d \
+                    --name staging-sentiment \
+                    -p 8001:8000 \
+                    ${IMAGE_NAME}:${IMAGE_TAG}
                     echo "Staging disponible sur http://localhost:8001"
                 '''
             }
