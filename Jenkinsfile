@@ -123,7 +123,11 @@ pipeline {
         }
 
         stage('Push') {
-            when { branch 'main' }
+            when {
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
+                }
+            }
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'github-token',
@@ -143,7 +147,11 @@ pipeline {
         }
 
         stage('Deploy Staging') {
-            when { branch 'main' }
+            when {
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
+                }
+            }
             steps {
                 echo "Déploiement de ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} en staging..."
                 sh '''
