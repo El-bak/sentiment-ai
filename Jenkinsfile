@@ -29,19 +29,12 @@ pipeline {
             }
         }
 
-         stage('IaC Apply') {
-            when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
-                }
-            }
+        stage('IaC Validate') {
             steps {
                 dir('infra') {
-                    sh 'terraform init -input=false'
-                    sh """
-                        terraform apply -auto-approve \
-                        -var='image_tag=${IMAGE_TAG}'
-                    """
+                    sh 'terraform init -backend=false -input=false'
+                    sh 'terraform fmt -check'
+                    sh 'terraform validate'
                 }
             }
         }
@@ -163,15 +156,23 @@ pipeline {
             }
         }
 
-          stage('IaC Validate') {
+          stage('IaC Apply') {
+            when {
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
+                }
+            }
             steps {
                 dir('infra') {
-                    sh 'terraform init -backend=false -input=false'
-                    sh 'terraform fmt -check'
-                    sh 'terraform validate'
+                    sh 'terraform init -input=false'
+                    sh """
+                        terraform apply -auto-approve \
+                        -var='image_tag=${IMAGE_TAG}'
+                    """
                 }
             }
         }
+
 
        stage('Deploy Staging') {
             when {
