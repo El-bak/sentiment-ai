@@ -185,15 +185,20 @@ pipeline {
 
 
        stage('Deploy Staging') {
-            when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
-                }
-            }
-            steps {
-                sh 'curl -f http://localhost:8001/health || exit 1'
-            }
-        }      
+    when {
+        expression {
+            return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
+        }
+    }
+    steps {
+        sh '''
+            docker run --rm \
+            --network cicd-network \
+            curlimages/curl:latest \
+            curl -f http://sentiment-staging:8000/health || exit 1
+        '''
+    }
+}     
     }
 
     post {
