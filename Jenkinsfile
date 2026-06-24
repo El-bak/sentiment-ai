@@ -156,7 +156,7 @@ pipeline {
             }
         }
 
-        stage('IaC Apply') {
+       stage('IaC Apply') {
             when {
                 expression {
                     return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
@@ -169,6 +169,10 @@ pipeline {
                         NETWORK_ID=$(docker network inspect cicd-network --format "{{.Id}}" 2>/dev/null || echo "")
                         if [ -n "$NETWORK_ID" ]; then
                             terraform import docker_network.cicd $NETWORK_ID 2>/dev/null || true
+                        fi
+                        CONTAINER_ID=$(docker inspect sentiment-staging --format "{{.Id}}" 2>/dev/null || echo "")
+                        if [ -n "$CONTAINER_ID" ]; then
+                            terraform import docker_container.sentiment_staging $CONTAINER_ID 2>/dev/null || true
                         fi
                     '''
                     sh """
