@@ -156,7 +156,7 @@ pipeline {
             }
         }
 
-          stage('IaC Apply') {
+        stage('IaC Apply') {
             when {
                 expression {
                     return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
@@ -165,6 +165,12 @@ pipeline {
             steps {
                 dir('infra') {
                     sh 'terraform init -input=false'
+                    sh '''
+                        NETWORK_ID=$(docker network inspect cicd-network --format "{{.Id}}" 2>/dev/null || echo "")
+                        if [ -n "$NETWORK_ID" ]; then
+                            terraform import docker_network.cicd $NETWORK_ID 2>/dev/null || true
+                        fi
+                    '''
                     sh """
                         terraform apply -auto-approve \
                         -var='image_tag=${IMAGE_TAG}'
