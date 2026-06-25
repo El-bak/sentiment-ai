@@ -156,7 +156,7 @@ pipeline {
             }
         }
 
-       stage('IaC Apply') {
+        stage('IaC Apply') {
             when {
                 expression {
                     return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
@@ -174,6 +174,14 @@ pipeline {
                         if [ -n "$CONTAINER_ID" ]; then
                             terraform import docker_container.sentiment_staging $CONTAINER_ID 2>/dev/null || true
                         fi
+                        PROMETHEUS_ID=$(docker inspect prometheus --format "{{.Id}}" 2>/dev/null || echo "")
+                        if [ -n "$PROMETHEUS_ID" ]; then
+                            terraform import docker_container.prometheus $PROMETHEUS_ID 2>/dev/null || true
+                        fi
+                        GRAFANA_ID=$(docker inspect grafana --format "{{.Id}}" 2>/dev/null || echo "")
+                        if [ -n "$GRAFANA_ID" ]; then
+                            terraform import docker_container.grafana $GRAFANA_ID 2>/dev/null || true
+                        fi
                     '''
                     sh """
                         terraform apply -auto-approve \
@@ -184,65 +192,65 @@ pipeline {
         }
 
 
-       stage('Deploy Staging') {
+        stage('Deploy Staging') {
             when {
                 expression {
                     return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
                 }
-        }
-        steps {
-            sh '''
-                docker run --rm \
-                --network cicd-network \
-                curlimages/curl:latest \
-                curl -f http://sentiment-staging:8000/health || exit 1
-            '''
-        }
-    } 
+            }
+            steps {
+                sh '''
+                    docker run --rm \
+                    --network cicd-network \
+                    curlimages/curl:latest \
+                    curl -f http://sentiment-staging:8000/health || exit 1
+                '''
+            }
+        } 
 
-    stage('Smoke Test') {
-    when {
-        expression {
-            return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
-        }
-    }
-    steps {
-        sh '''
-            echo "Attente demarrage (10s)..."
-            sleep 10
+        stage('Smoke Test') {
+            when {
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
+                }
+            }
+            steps {
+                sh '''
+                    echo "Attente demarrage (10s)..."
+                    sleep 10
 
-            #1. L.app repond
-            docker run --rm --network cicd-network curlimages/curl:latest \
-                curl -f http://sentiment-staging:8000/health || exit 1
-            echo "/health OK"
+                    #1. L.app repond
+                    docker run --rm --network cicd-network curlimages/curl:latest \
+                        curl -f http://sentiment-staging:8000/health || exit 1
+                    echo "/health OK"
 
-            # 2. Les metriques sont exposees
-            docker run --rm --network cicd-network curlimages/curl:latest \
-                curl -s http://sentiment-staging:8000/metrics | \
-                grep -q sentiment_predictions_total || exit 1
-            echo "/metrics OK"
+                    # 2. Les metriques sont exposees
+                    docker run --rm --network cicd-network curlimages/curl:latest \
+                        curl -s http://sentiment-staging:8000/metrics | \
+                        grep -q sentiment_predictions_total || exit 1
+                    echo "/metrics OK"
 
-            # 3. Prometheus scrape l'app
-            sleep 20
-            docker run --rm --network cicd-network curlimages/curl:latest \
-                curl -s "http://prometheus:9090/api/v1/query?query=up%7Bjob%3D%27sentiment-ai%27%7D" | \
-                grep -q "\"value\"" || exit 1
-            echo "Prometheus scrape sentiment-ai : UP"
+                    # 3. Prometheus scrape l'app
+                    sleep 20
+                    docker run --rm --network cicd-network curlimages/curl:latest \
+                        curl -s "http://prometheus:9090/api/v1/query?query=up%7Bjob%3D%27sentiment-ai%27%7D" | \
+                        grep -q "\"value\"" || exit 1
+                    echo "Prometheus scrape sentiment-ai : UP"
 
-            # 4. Grafana repond
-            docker run --rm --network cicd-network curlimages/curl:latest \
-                curl -f http://grafana:3000/api/health || exit 1
-            echo "Grafana OK"
-        '''
-    }
-    post {
-        failure {
-            sh 'docker logs prometheus || true'
-            sh 'docker logs sentiment-staging || true'
-            echo 'Smoke Test KO -- voir logs ci-dessus'
-        }
-    }
-}    
+                    # 4. Grafana repond
+                    docker run --rm --network cicd-network curlimages/curl:latest \
+                        curl -f http://grafana:3000/api/health || exit 1
+                    echo "Grafana OK"
+                '''
+            }
+            post {
+                failure {
+                    sh 'docker logs prometheus || true'
+                    sh 'docker logs sentiment-staging || true'
+                    echo 'Smoke Test KO -- voir logs ci-dessus'
+                }
+            }
+        }    
     }
 
     post {
