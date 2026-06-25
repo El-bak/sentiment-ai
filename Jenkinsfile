@@ -185,6 +185,22 @@ pipeline {
 
 
        stage('Deploy Staging') {
+            when {
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
+                }
+        }
+        steps {
+            sh '''
+                docker run --rm \
+                --network cicd-network \
+                curlimages/curl:latest \
+                curl -f http://sentiment-staging:8000/health || exit 1
+            '''
+        }
+    } 
+
+    stage('Smoke Test') {
     when {
         expression {
             return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
@@ -192,13 +208,41 @@ pipeline {
     }
     steps {
         sh '''
-            docker run --rm \
-            --network cicd-network \
-            curlimages/curl:latest \
-            curl -f http://sentiment-staging:8000/health || exit 1
+            echo "Attente demarrage (10s)..."
+            sleep 10
+
+            #1. L.app repond
+            docker run --rm --network cicd-network curlimages/curl:latest \
+                curl -f http://sentiment-staging:8000/health || exit 1
+            echo "/health OK"
+
+            # 2. Les metriques sont exposees
+            docker run --rm --network cicd-network curlimages/curl:latest \
+                curl -s http://sentiment-staging:8000/metrics | \
+                grep -q sentiment_predictions_total || exit 1
+            echo "/metrics OK"
+
+            # 3. Prometheus scrape l'app
+            sleep 20
+            docker run --rm --network cicd-network curlimages/curl:latest \
+                curl -s "http://prometheus:9090/api/v1/query?query=up%7Bjob%3D%27sentiment-ai%27%7D" | \
+                grep -q "\"value\"" || exit 1
+            echo "Prometheus scrape sentiment-ai : UP"
+
+            # 4. Grafana repond
+            docker run --rm --network cicd-network curlimages/curl:latest \
+                curl -f http://grafana:3000/api/health || exit 1
+            echo "Grafana OK"
         '''
     }
-}     
+    post {
+        failure {
+            sh 'docker logs prometheus || true'
+            sh 'docker logs sentiment-staging || true'
+            echo 'Smoke Test KO -- voir logs ci-dessus'
+        }
+    }
+}    
     }
 
     post {
