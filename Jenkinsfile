@@ -40,35 +40,41 @@ pipeline {
         }
 
         stage('Build & Test') {
-    steps {
-        sh '''
-            docker build --no-cache -t ${IMAGE_NAME}:${IMAGE_TAG} .
+            steps {
+                sh '''
+                    docker build --no-cache -t ${IMAGE_NAME}:${IMAGE_TAG} .
 
-            docker rm -f test-runner 2>/dev/null || true
+                    docker rm -f test-runner 2>/dev/null || true
 
-            set +e
-            docker run \
-            -e CI=true \
-            --name test-runner \
-            ${IMAGE_NAME}:${IMAGE_TAG} \
-            pytest tests/ -v \
-            --cov=src \
-            --cov-report=xml:/tmp/coverage.xml \
-            --cov-report=term-missing \
-            --cov-fail-under=70
-            TEST_EXIT_CODE=$?
-            set -e
+                    set +e
+                    docker run \
+                    -e CI=true \
+                    --name test-runner \
+                    ${IMAGE_NAME}:${IMAGE_TAG} \
+                    pytest tests/ -v \
+                    --cov=src \
+                    --cov-report=xml:/tmp/coverage.xml \
+                    --cov-report=term-missing \
+                    --cov-fail-under=70
+                    TEST_EXIT_CODE=$?
+                    set -e
 
-            docker cp test-runner:/tmp/coverage.xml ./coverage.xml 2>/dev/null || true
-            docker rm -f test-runner 2>/dev/null || true
+                    docker cp test-runner:/tmp/coverage.xml ./coverage.xml 2>/dev/null || true
+                    docker rm -f test-runner 2>/dev/null || true
 
-            # Corriger les chemins absolus /app/ -> chemins relatifs pour SonarQube
-            sed -i 's#/app/#./#g' coverage.xml 2>/dev/null || true
-            sed -i 's#filename="src/#filename="src/#g' coverage.xml 2>/dev/null || true
+                    sed -i 's#/app/#./#g' coverage.xml 2>/dev/null || true
+                    sed -i 's#filename="src/#filename="src/#g' coverage.xml 2>/dev/null || true
 
-            exit $TEST_EXIT_CODE
-        '''
-    }
+                    exit $TEST_EXIT_CODE
+                '''
+            }
+            post {
+                failure {
+                    echo 'Tests échoués ou coverage insuffisant (< 70%)'
+                }
+            }
+        }
+
         stage('SonarQube Analysis') {
             environment {
                 SONARQUBE_TOKEN = credentials('sonar-token')
@@ -185,7 +191,6 @@ pipeline {
             }
         }
 
-
         stage('Deploy Staging') {
             when {
                 expression {
@@ -200,7 +205,7 @@ pipeline {
                     curl -f http://sentiment-staging:8000/health || exit 1
                 '''
             }
-        } 
+        }
 
         stage('Smoke Test') {
             when {
@@ -213,25 +218,21 @@ pipeline {
                     echo "Attente demarrage (10s)..."
                     sleep 10
 
-                    #1. L.app repond
                     docker run --rm --network cicd-network curlimages/curl:latest \
                         curl -f http://sentiment-staging:8000/health || exit 1
                     echo "/health OK"
 
-                    # 2. Les metriques sont exposees
                     docker run --rm --network cicd-network curlimages/curl:latest \
                         curl -s http://sentiment-staging:8000/metrics | \
                         grep -q sentiment_predictions_total || exit 1
                     echo "/metrics OK"
 
-                    # 3. Prometheus scrape l'app
                     sleep 20
                     docker run --rm --network cicd-network curlimages/curl:latest \
                         curl -s "http://prometheus:9090/api/v1/query?query=up%7Bjob%3D%27sentiment-ai%27%7D" | \
                         grep -q "\"value\"" || exit 1
                     echo "Prometheus scrape sentiment-ai : UP"
 
-                    # 4. Grafana repond
                     docker run --rm --network cicd-network curlimages/curl:latest \
                         curl -f http://grafana:3000/api/health || exit 1
                     echo "Grafana OK"
@@ -244,7 +245,7 @@ pipeline {
                     echo 'Smoke Test KO -- voir logs ci-dessus'
                 }
             }
-        }    
+        }
     }
 
     post {
