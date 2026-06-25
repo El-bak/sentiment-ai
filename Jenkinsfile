@@ -199,6 +199,7 @@ pipeline {
             }
             steps {
                 sh '''
+                    sleep 5
                     docker run --rm \
                     --network cicd-network \
                     curlimages/curl:latest \
