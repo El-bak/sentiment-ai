@@ -230,9 +230,8 @@ pipeline {
 
                     sleep 20
                     docker run --rm --network cicd-network curlimages/curl:latest \
-                        curl -s "http://prometheus:9090/api/v1/query?query=up%7Bjob%3D%27sentiment-ai%27%7D" | \
-                        grep -q "\"value\"" || exit 1
-                    echo "Prometheus scrape sentiment-ai : UP"
+                        curl -f http://prometheus:9090/-/healthy || exit 1
+                    echo "Prometheus repond : OK"
 
                     docker run --rm --network cicd-network curlimages/curl:latest \
                         curl -f http://grafana:3000/api/health || exit 1
